@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>99일 야간숲: 루비상자 시뮬레이터</title>
+    <style>
+        :root {
+            --rbx-orange: #ffaa00;
+            --rbx-bg: rgba(0, 0, 0, 0.85);
+            --ruby-red: #ff334b;
+        }
+
+        body {
+            margin: 0; padding: 0;
+            background: #050505;
+            color: white;
+            font-family: 'Pretendard', sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
+        /* [1] 설정 레이어 */
+        #setup {
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.95);
+            z-index: 2000;
+            display: flex; align-items: center; justify-content: center;
+            padding: 20px;
+        }
+        .setup-card {
+            background: #111; padding: 25px; border-radius: 20px;
+            width: 100%; max-width: 320px; border: 1px solid #333;
+            text-align: center;
+        }
+        .setup-card h2 { color: var(--ruby-red); margin-top: 0; font-size: 22px; }
+        .setup-card p { font-size: 12px; color: #888; margin-bottom: 20px; }
+        
+        input[type="file"] { display: none; }
+        .file-label {
+            display: block; background: #1a1a1a; padding: 12px; margin: 10px 0;
+            border-radius: 10px; font-size: 13px; text-align: left;
+            border: 1px solid #333; color: #bbb;
+        }
+        .file-label span { float: right; color: var(--ruby-red); font-weight: bold; }
+
+        .start-btn {
+            width: 100%; padding: 16px; background: var(--ruby-red);
+            border: none; border-radius: 12px; color: white;
+            font-weight: bold; font-size: 18px; margin-top: 15px;
+            box-shadow: 0 4px 15px rgba(255, 51, 75, 0.3);
+        }
+
+        /* [2] 게임 메인 영역 */
+        #game-area {
+            display: none; /* 시작 전엔 숨김 */
+            flex: 1; width: 100%;
+            flex-direction: column; align-items: center; justify-content: center;
+            position: relative;
+        }
+
+        /* 아이템 레이어 (상자보다 위에 위치) */
+        #item-layer {
+            position: absolute;
+            top: 45%; left: 50%;
+            transform: translate(-50%, -50%) scale(0);
+            z-index: 100;
+            opacity: 0;
+            transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            pointer-events: none;
+        }
+        #item-layer.show {
+            opacity: 1;
+            transform: translate(-50%, -50%) scale(1);
+        }
+        #item-img {
+            max-width: 280px; max-height: 280px;
+            filter: drop-shadow(0 0 30px var(--rbx-orange));
+        }
+
+        /* 상자 이미지 */
+        #boxDisplay {
+            width: 300px;
+            z-index: 10;
+            transition: transform 0.2s;
+        }
+        .shake { animation: shake 0.1s infinite; }
+        @keyframes shake {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.03) rotate(1deg); }
+            100% { transform: scale(1); }
+        }
+
+        /* Proximity Prompt (E 버튼) */
+        .prompt {
+            position: absolute; bottom: 100px;
+            background: var(--rbx-bg); padding: 16px 28px; border-radius: 50px;
+            display: flex; align-items: center; gap: 15px;
+            border: 1px solid rgba(255,255,255,0.1);
+            z-index: 50;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .circle {
+            width: 64px; height: 64px; background: white; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center; position: relative;
+        }
+        .circle span { color: black; font-weight: 900; font-size: 28px; }
+        
+        .progress-svg { position: absolute; transform: rotate(-90deg); }
+        .progress-circle {
+            fill: none; stroke: var(--rbx-orange); stroke-width: 7;
+            stroke-dasharray: 201; /* 2 * PI * 32 */
+            stroke-dashoffset: 201;
+            transition: stroke-dashoffset 0.1s linear;
+        }
+
+        /* 리셋 안내 */
+        #retry-guide {
+            position: absolute; bottom: 60px;
+            color: #888; font-size: 14px;
+            display: none; animation: blink 1s infinite;
+        }
+        @keyframes blink { 0% { opacity: 0.3; } 50% { opacity: 1; } 100% { opacity: 0.3; } }
+    </style>
+</head>
+<body>
+
+    <div id="setup">
+        <div class="setup-card">
+            <h2>99일 야간숲 루비상자</h2>
+            <p>준비한 이미지를 모두 등록해 주세요.</p>
+            
+            <label class="file-label" for="f1">🔒 닫힌 상자 이미지 <span id="s1">선택</span></label>
+            <input type="file" id="f1" accept="image/*" onchange="chk(1)">
+            
+            <label class="file-label" for="f2">🔓 열린 상자 이미지 <span id="s2">선택</span></label>
+            <input type="file" id="f2" accept="image/*" onchange="chk(2)">
+            
+            <label class="file-label" for="f3">⚔️ 아이템들 (여러개 선택) <span id="s3">선택</span></label>
+            <input type="file" id="f3" accept="image/*" multiple onchange="chk(3)">
+            
+            <label class="file-label" for="f4">🔊 열기 소리 (MP3) <span id="s4">선택</span></label>
+            <input type="file" id="f4" accept="audio/*" onchange="chk(4)">
+            
+            <button class="start-btn" onclick="startGame()">상자깡 시작하기</button>
+        </div>
+    </div>
+
+    <div id="game-area" onclick="resetBox()">
+        <div id="item-layer">
+            <img id="item-img" src="">
+        </div>
+
+        <img id="boxDisplay" src="">
+
+        <div id="prompt" class="prompt" ontouchstart="hStart(event)" ontouchend="hEnd()" onmousedown="hStart(event)" onmouseup="hEnd()">
+            <div class="circle">
+                <span>E</span>
+                <svg width="72" height="72" class="progress-svg">
+                    <circle class="progress-circle" cx="36" cy="36" r="32"></circle>
+                </svg>
+            </div>
+            <b style="font-size:22px">열기</b>
+        </div>
+
+        <div id="retry-guide">화면을 클릭하여 상자 닫기</div>
+    </div>
+
+    <script>
+        let data = { closed: "", opened: "", items: [], sound: null, isOpened: false };
+        let holdProgress = 0;
+        let holdTimer = null;
+        const dashMax = 201;
+
+        // 파일 선택 시 체크 표시
+        function chk(num) {
+            const input = document.getElementById('f' + num);
+            const span = document.getElementById('s' + num);
+            if(input.files.length > 0) {
+                span.innerText = "✅";
+                span.style.color = "#4CAF50";
+            }
+        }
+
+        // 게임 시작 버튼
+        function startGame() {
+            const i1 = document.getElementById('f1').files[0];
+            const i2 = document.getElementById('f2').files[0];
+            const i3 = document.getElementById('f3').files;
+            
+            if (!i1 || !i2 || i3.length === 0) {
+                alert("상자 이미지 2장과 아이템 이미지를 최소 1개 등록해야 합니다!");
+                return;
+            }
+
+            data.closed = URL.createObjectURL(i1);
+            data.opened = URL.createObjectURL(i2);
+            data.items = Array.from(i3).map(f => URL.createObjectURL(f));
+            
+            const sFile = document.getElementById('f4').files[0];
+            if(sFile) data.sound = new Audio(URL.createObjectURL(sFile));
+
+            document.getElementById('boxDisplay').src = data.closed;
+            document.getElementById('setup').style.display = 'none';
+            document.getElementById('game-area').style.display = 'flex';
+        }
+
+        // [E] 버튼 누르기 시작
+        function hStart(e) {
+            if(data.isOpened) return;
+            e.preventDefault(); // 모바일 롱탭 방지
+            e.stopPropagation();
+
+            document.getElementById('boxDisplay').classList.add('shake');
+            
+            holdTimer = setInterval(() => {
+                holdProgress += 4; // 속도 조절
+                document.querySelector('.progress-circle').style.strokeDashoffset = dashMax - (holdProgress / 100 * dashMax);
+                
+                if (holdProgress >= 100) {
+                    clearInterval(holdTimer);
+                    openBox();
+                }
+            }, 50);
+        }
+
+        // [E] 버튼 떼기
+        function hEnd() {
+            if(data.isOpened) return;
+            clearInterval(holdTimer);
+            holdProgress = 0;
+            document.querySelector('.progress-circle').style.strokeDashoffset = dashMax;
+            document.getElementById('boxDisplay').classList.remove('shake');
+        }
+
+        // 상자 열기
+        function openBox() {
+            data.isOpened = true;
+            if(data.sound) data.sound.play();
+
+            document.getElementById('boxDisplay').src = data.opened;
+            document.getElementById('boxDisplay').classList.remove('shake');
+            document.getElementById('prompt').style.display = 'none';
+
+            // 아이템 랜덤 선택 및 표시
+            const randomItem = data.items[Math.floor(Math.random() * data.items.length)];
+            document.getElementById('item-img').src = randomItem;
+            
+            setTimeout(() => {
+                document.getElementById('item-layer').classList.add('show');
+                document.getElementById('retry-guide').style.display = 'block';
+            }, 200);
+        }
+
+        // 다시 닫기
+        function resetBox() {
+            if(!data.isOpened) return;
+            
+            data.isOpened = false;
+            document.getElementById('item-layer').classList.remove('show');
+            document.getElementById('retry-guide').style.display = 'none';
+            
+            setTimeout(() => {
+                document.getElementById('boxDisplay').src = data.closed;
+                document.getElementById('prompt').style.display = 'flex';
+                holdProgress = 0;
+                document.querySelector('.progress-circle').style.strokeDashoffset = dashMax;
+            }, 300);
+        }
+    </script>
+</body>
+</html>
