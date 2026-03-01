@@ -7,33 +7,236 @@
     <style>
         :root {
             --rbx-orange: #ffaa00;
-            --rbx-bg: rgba(0, 0, 0, 0.85);
-            --ruby-red: #ff334b;
+            --main-brown: #3e2723;
+            --light-brown: #5d4037;
+            --accent-gold: #d4af37;
+            --bg-dark: #1a0f0a;
         }
 
         body {
             margin: 0; padding: 0;
-            background: #050505;
-            color: white;
+            background: var(--bg-dark);
+            color: #d7ccc8;
             font-family: 'Pretendard', sans-serif;
             display: flex;
             flex-direction: column;
             align-items: center;
             height: 100vh;
             overflow: hidden;
-            -webkit-user-select: none;
-            user-select: none;
+            -webkit-user-select: none; user-select: none;
         }
 
         /* [1] 설정 레이어 */
         #setup {
             position: fixed; inset: 0;
-            background: rgba(0,0,0,0.95);
+            background: rgba(26, 15, 10, 0.98);
             z-index: 2000;
             display: flex; align-items: center; justify-content: center;
             padding: 20px;
         }
         .setup-card {
+            background: var(--main-brown); 
+            padding: 30px 25px; 
+            border-radius: 20px;
+            width: 100%; max-width: 320px; 
+            border: 2px solid var(--light-brown);
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.7);
+        }
+        .setup-card h2 { color: var(--accent-gold); margin-top: 0; font-size: 24px; text-shadow: 2px 2px 4px black; }
+        
+        input[type="file"] { display: none; }
+        .file-label {
+            display: block; background: rgba(0,0,0,0.4); padding: 14px; margin: 12px 0;
+            border-radius: 10px; font-size: 13px; text-align: left;
+            border: 1px solid var(--light-brown); color: #d7ccc8;
+            cursor: pointer;
+        }
+        .file-label span { float: right; color: var(--accent-gold); font-weight: bold; }
+
+        .start-btn {
+            width: 100%; padding: 16px; 
+            background: linear-gradient(to bottom, #5d4037, #3e2723);
+            border: 1px solid var(--accent-gold); border-radius: 12px; 
+            color: var(--accent-gold); font-weight: bold; font-size: 18px; 
+            margin-top: 20px; cursor: pointer;
+        }
+
+        /* [2] 게임 메인 영역 */
+        #game-area {
+            display: none;
+            flex: 1; width: 100%;
+            flex-direction: column; align-items: center; justify-content: center;
+            position: relative;
+        }
+
+        /* ★ 아이템 레이어 - 크기 고정 및 통일 ★ */
+        #item-layer {
+            position: absolute; top: 45%; left: 50%;
+            transform: translate(-50%, -50%) scale(0);
+            z-index: 100; opacity: 0;
+            transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            pointer-events: none;
+            
+            /* 고정 크기 영역 생성 (정사각형) */
+            width: 250px;
+            height: 250px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        #item-layer.show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+        
+        #item-img { 
+            width: 100%; 
+            height: 100%; 
+            object-fit: contain; /* 이미지 비율 유지하며 영역 안에 꽉 채움 */
+            filter: drop-shadow(0 0 30px var(--rbx-orange)); 
+        }
+
+        /* 상자 이미지 */
+        #boxDisplay { width: 300px; z-index: 10; transition: transform 0.2s; }
+        .shake { animation: shakeBox 0.15s infinite; }
+        @keyframes shakeBox {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05) rotate(2deg); }
+            100% { transform: scale(1); }
+        }
+
+        /* Proximity Prompt */
+        .prompt {
+            position: absolute; bottom: 100px;
+            background: rgba(46, 34, 25, 0.95); padding: 16px 28px; border-radius: 50px;
+            display: flex; align-items: center; gap: 18px;
+            border: 2px solid var(--light-brown);
+            z-index: 50;
+        }
+        .circle {
+            width: 64px; height: 64px; background: #efebe9; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center; position: relative;
+        }
+        .circle span { color: #3e2723; font-weight: 900; font-size: 32px; }
+        
+        .progress-svg { position: absolute; transform: rotate(-90deg); }
+        .progress-circle {
+            fill: none; stroke: var(--rbx-orange); stroke-width: 8;
+            stroke-dasharray: 201; stroke-dashoffset: 201;
+            transition: stroke-dashoffset 0.1s linear;
+        }
+        .prompt-text { font-size: 24px; font-weight: bold; color: #d7ccc8; text-shadow: 1px 1px 2px black; }
+
+        #retry-guide {
+            position: absolute; bottom: 60px;
+            color: #8d6e63; font-size: 15px;
+            display: none; animation: blink 1.2s infinite;
+        }
+        @keyframes blink { 0% { opacity: 0.3; } 50% { opacity: 1; } 100% { opacity: 0.3; } }
+    </style>
+</head>
+<body>
+
+    <div id="setup">
+        <div class="setup-card">
+            <h2>99 DAYS FOREST</h2>
+            <p>보급 상자 데이터를 동기화하십시오.</p>
+            <label class="file-label" for="f1">🔒 닫힌 상자 이미지 <span id="s1">대기</span></label>
+            <input type="file" id="f1" accept="image/*" onchange="chk(1)">
+            <label class="file-label" for="f2">🔓 열린 상자 이미지 <span id="s2">대기</span></label>
+            <input type="file" id="f2" accept="image/*" onchange="chk(2)">
+            <label class="file-label" for="f3">⚔️ 아이템들 (다중 선택) <span id="s3">대기</span></label>
+            <input type="file" id="f3" accept="image/*" multiple onchange="chk(3)">
+            <label class="file-label" for="f4">🔊 효과음 (MP3) <span id="s4">옵션</span></label>
+            <input type="file" id="f4" accept="audio/*" onchange="chk(4)">
+            <button class="start-btn" onclick="startGame()">데이터 로드 및 시작</button>
+        </div>
+    </div>
+
+    <div id="game-area" onclick="resetBox()">
+        <div id="item-layer"><img id="item-img" src=""></div>
+        <img id="boxDisplay" src="">
+        <div id="prompt" class="prompt" ontouchstart="hStart(event)" ontouchend="hEnd()" onmousedown="hStart(event)" onmouseup="hEnd()">
+            <div class="circle">
+                <span>E</span>
+                <svg width="72" height="72" class="progress-svg"><circle class="progress-circle" cx="36" cy="36" r="32"></circle></svg>
+            </div>
+            <div class="prompt-text">열기</div>
+        </div>
+        <div id="retry-guide">화면을 터치하여 다시 닫기</div>
+    </div>
+
+    <script>
+        let data = { closed: "", opened: "", items: [], sound: null, isOpened: false };
+        let holdProgress = 0, holdTimer = null;
+        const dashMax = 201;
+
+        function chk(n) {
+            const input = document.getElementById('f' + n);
+            const span = document.getElementById('s' + n);
+            if(input.files.length > 0) { span.innerText = "DONE"; span.style.color = "#d4af37"; }
+        }
+
+        function startGame() {
+            const i1 = document.getElementById('f1').files[0];
+            const i2 = document.getElementById('f2').files[0];
+            const i3 = document.getElementById('f3').files;
+            if (!i1 || !i2 || i3.length === 0) { alert("이미지들을 모두 등록해주세요!"); return; }
+            data.closed = URL.createObjectURL(i1);
+            data.opened = URL.createObjectURL(i2);
+            data.items = Array.from(i3).map(f => URL.createObjectURL(f));
+            const sFile = document.getElementById('f4').files[0];
+            if(sFile) data.sound = new Audio(URL.createObjectURL(sFile));
+            document.getElementById('boxDisplay').src = data.closed;
+            document.getElementById('setup').style.display = 'none';
+            document.getElementById('game-area').style.display = 'flex';
+        }
+
+        function hStart(e) {
+            if(data.isOpened) return;
+            e.preventDefault(); e.stopPropagation();
+            document.getElementById('boxDisplay').classList.add('shake');
+            holdTimer = setInterval(() => {
+                holdProgress += 4;
+                document.querySelector('.progress-circle').style.strokeDashoffset = dashMax - (holdProgress / 100 * dashMax);
+                if (holdProgress >= 100) { clearInterval(holdTimer); openBox(); }
+            }, 50);
+        }
+
+        function hEnd() {
+            if(data.isOpened) return;
+            clearInterval(holdTimer); holdProgress = 0;
+            document.querySelector('.progress-circle').style.strokeDashoffset = dashMax;
+            document.getElementById('boxDisplay').classList.remove('shake');
+        }
+
+        function openBox() {
+            data.isOpened = true;
+            if(data.sound) data.sound.play();
+            document.getElementById('boxDisplay').src = data.opened;
+            document.getElementById('boxDisplay').classList.remove('shake');
+            document.getElementById('prompt').style.display = 'none';
+            const randUrl = data.items[Math.floor(Math.random() * data.items.length)];
+            document.getElementById('item-img').src = randUrl;
+            setTimeout(() => {
+                document.getElementById('item-layer').classList.add('show');
+                document.getElementById('retry-guide').style.display = 'block';
+            }, 200);
+        }
+
+        function resetBox() {
+            if(!data.isOpened) return;
+            data.isOpened = false;
+            document.getElementById('item-layer').classList.remove('show');
+            document.getElementById('retry-guide').style.display = 'none';
+            setTimeout(() => {
+                document.getElementById('boxDisplay').src = data.closed;
+                document.getElementById('prompt').style.display = 'flex';
+                holdProgress = 0;
+                document.querySelector('.progress-circle').style.strokeDashoffset = dashMax;
+            }, 300);
+        }
+    </script>
+</body>
+</html>
             background: #111; padding: 25px; border-radius: 20px;
             width: 100%; max-width: 320px; border: 1px solid #333;
             text-align: center;
